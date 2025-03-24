@@ -21,9 +21,9 @@ if uploaded_file:
     st.subheader("🧩 Pilih Kolom untuk Setiap Komponen")
 
     col_project = st.selectbox("Kolom Nama Proyek", df.columns)
-    col_x = st.selectbox("Kolom Sumbu X (AF / Pengurangan Emisi)", df.columns)
-    col_middle = st.selectbox("Kolom Nilai Tengah Batang (NPV)", df.columns)
-    col_top = st.selectbox("Kolom Nilai Ujung Batang (MAC)", df.columns)
+    col_x = st.selectbox("Kolom Sumbu X", df.columns)
+    col_middle = st.selectbox("Kolom Nilai Tengah Batang", df.columns)
+    col_top = st.selectbox("Kolom Nilai Ujung Batang", df.columns)
 
     st.markdown("---")
     st.subheader("⚙️ Parameter Tambahan")
