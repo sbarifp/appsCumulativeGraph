@@ -5,21 +5,28 @@ import matplotlib.ticker as ticker
 from matplotlib import cm
 import numpy as np
 from io import BytesIO
+import matplotlib.colors as mcolors
+import warnings
+
+# Suppress warning openpyxl
+warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
 
 st.set_page_config(layout="wide")
-st.title("📊 MACC Curve Generator")
+st.title("📊 Curve Generator")
 
-# --- Upload file ---
 uploaded_file = st.file_uploader("Upload Excel file", type=["xlsx"])
 
 if uploaded_file:
     xls = pd.ExcelFile(uploaded_file)
     sheet = st.selectbox("Pilih worksheet", xls.sheet_names)
-    df = pd.read_excel(xls, sheet_name=sheet)
+
+    st.markdown("---")
+    st.subheader("📌 Tentukan Baris Header (Nama Kolom)")
+    header_row = st.number_input("Gunakan baris ke-berapa sebagai header?", min_value=1, value=2)
+    df = pd.read_excel(xls, sheet_name=sheet, header=int(header_row) - 1)
 
     st.markdown("---")
     st.subheader("🧩 Pilih Kolom untuk Setiap Komponen")
-
     col_project = st.selectbox("Kolom Nama Proyek", df.columns)
     col_x = st.selectbox("Kolom Sumbu X", df.columns)
     col_middle = st.selectbox("Kolom Nilai Tengah Batang", df.columns)
@@ -27,31 +34,49 @@ if uploaded_file:
 
     st.markdown("---")
     st.subheader("⚙️ Parameter Tambahan")
-    mac_min = st.number_input("Batas bawah MAC", value=-2500)
-    mac_max = st.number_input("Batas atas MAC", value=3000)
+    mac_min = st.number_input("Batas bawah", value=-2500)
+    mac_max = st.number_input("Batas atas", value=3000)
+    x_label = st.text_input("Label Sumbu X", value="Avoided Emission (tCO2e per Tahun)")
+    y_label = st.text_input("Label Sumbu Y", value="Abatement Cost (USD per tCO2e)")
 
-    x_label = st.text_input("Label Sumbu X", value="Avoided Emission (Ton CO2e/Tahun)")
-    y_label = st.text_input("Label Sumbu Y", value="Abatement Cost (USD/Ton CO2e)")
+    df_clean = df[[col_project, col_x, col_middle, col_top]].dropna()
+    df_clean.columns = ['Project', 'Nilai_Xaxis', 'Nilai_Tengah', 'Nilai_Ujung']
+
+    df_clean['Nilai_Xaxis'] = pd.to_numeric(df_clean['Nilai_Xaxis'], errors='coerce')
+    df_clean['Nilai_Tengah'] = pd.to_numeric(df_clean['Nilai_Tengah'], errors='coerce')
+    df_clean['Nilai_Ujung'] = pd.to_numeric(df_clean['Nilai_Ujung'], errors='coerce')
+    df_clean = df_clean.dropna().sort_values(by='Nilai_Ujung').reset_index(drop=True)
+    df_clean['MAC_clipped'] = df_clean['Nilai_Ujung'].clip(lower=mac_min, upper=mac_max)
+
+    unique_projects = df_clean['Project'].unique()
+
+    # 🎨 Pilih dan preview skema warna
+    st.subheader("🎨 Pilih Skema Warna Batang")
+    colormaps_available = ['PuBuGn', 'cool', 'Blues', 'plasma', 'viridis', 'cividis']
+    selected_colormap = st.selectbox("Pilih Skema Warna", colormaps_available)
+
+    def preview_colormap(cmap_name, n=10):
+        gradient = np.linspace(0.1, 0.9, n).reshape(1, n)  # Skip warna ekstrem
+        fig, ax = plt.subplots(figsize=(5, 0.4))
+        cmap = cm.get_cmap(cmap_name)
+        ax.imshow(gradient, aspect='auto', cmap=cmap)
+        ax.set_axis_off()
+        st.pyplot(fig)
+
+    st.markdown("🔍 Pratinjau Skema Warna Terpilih:")
+    preview_colormap(selected_colormap, n=len(unique_projects))
+
+    # Ambil warna dengan skip warna pucat
+    cmap_base = cm.get_cmap(selected_colormap)
+    color_vals = np.linspace(0.1, 0.9, len(unique_projects))
+    project_to_color = {proj: cmap_base(val) for proj, val in zip(unique_projects, color_vals)}
 
     if st.button("Buat Grafik") or 'fig1' not in st.session_state:
-        df_clean = df[[col_project, col_x, col_middle, col_top]].dropna()
-        df_clean.columns = ['Project', 'AF', 'NPV', 'MAC']
-
-        df_clean['AF'] = pd.to_numeric(df_clean['AF'], errors='coerce')
-        df_clean['NPV'] = pd.to_numeric(df_clean['NPV'], errors='coerce')
-        df_clean['MAC'] = pd.to_numeric(df_clean['MAC'], errors='coerce')
-        df_clean = df_clean.dropna().sort_values(by='MAC').reset_index(drop=True)
-
-        df_clean['MAC_clipped'] = df_clean['MAC'].clip(lower=mac_min, upper=mac_max)
-
-        unique_projects = df_clean['Project'].unique()
-        colors = cm.tab20.colors
-        project_to_color = {proj: colors[i % len(colors)] for i, proj in enumerate(unique_projects)}
 
         def plot_macc(df_subset, title, y_min, y_max, use_clipped=False, ax=None, x_label="", y_label="", suppress_output=False):
             df_subset = df_subset.reset_index(drop=True)
             x_start = [0]
-            for val in df_subset['AF'].tolist()[:-1]:
+            for val in df_subset['Nilai_Xaxis'].tolist()[:-1]:
                 x_start.append(x_start[-1] + val)
 
             if ax is None:
@@ -64,21 +89,23 @@ if uploaded_file:
 
             for i, row in df_subset.iterrows():
                 start = x_start[i]
-                width = row['AF']
+                width = row['Nilai_Xaxis']
                 mid_x = start + width / 2
                 color = project_to_color.get(row['Project'], 'gray')
-
-                height = row['MAC_clipped'] if use_clipped else row['MAC']
+                height = row['MAC_clipped'] if use_clipped else row['Nilai_Ujung']
 
                 ax.bar(x=start, height=height, width=width, align='edge', bottom=0, color=color, label=row['Project'])
 
                 if y_min < height < y_max:
-                    ax.text(mid_x, height + (100 if height >= 0 else -100), f"{row['MAC']:.2f}",
+                    ax.text(mid_x, height + (100 if height >= 0 else -100),
+                            f"{row['Nilai_Ujung']:,.0f}".replace(",", "."),
                             ha='center', va='bottom' if height >= 0 else 'top', fontsize=5)
-                    ax.text(mid_x, height/2, f"{row['NPV']:,.0f}", ha='center', va='center',
+                    ax.text(mid_x, height / 2,
+                            f"{row['Nilai_Tengah']:,.0f}".replace(",", "."),
+                            ha='center', va='center',
                             fontsize=5, color='white' if abs(height) > 500 else 'black')
 
-                ax.text(mid_x, 0, f"{row['AF']:.2f}", ha='center', va='bottom', fontsize=5)
+                ax.text(mid_x, 0, f"{row['Nilai_Xaxis']:,.0f}".replace(",", "."), ha='center', va='bottom', fontsize=5)
 
             for spine in ax.spines.values():
                 spine.set_visible(False)
@@ -87,7 +114,7 @@ if uploaded_file:
             ax.set_ylabel(y_label, fontsize=9)
             ax.set_xlabel(x_label, fontsize=9)
             ax.set_xticks([])
-            ax.yaxis.set_major_formatter(ticker.StrMethodFormatter('{x:,.0f}'))
+            ax.yaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: f"{int(x):,}".replace(",", ".")))
             ax.set_title(title, fontsize=10)
 
             handles, labels = ax.get_legend_handles_labels()
@@ -99,11 +126,11 @@ if uploaded_file:
 
             return ax.figure
 
-        df_extreme = df_clean[~df_clean['MAC'].between(mac_min, mac_max)]
+        df_extreme = df_clean[~df_clean['Nilai_Ujung'].between(mac_min, mac_max)]
         ymin, ymax = 0, 1
         if not df_extreme.empty:
-            ymax = df_extreme['MAC'].max() * 1.1
-            ymin = df_extreme['MAC'].min() * 1.1 if df_extreme['MAC'].min() < 0 else 0
+            ymax = df_extreme['Nilai_Ujung'].max() * 1.1
+            ymin = df_extreme['Nilai_Ujung'].min() * 1.1 if df_extreme['Nilai_Ujung'].min() < 0 else 0
 
         fig_gab = plt.figure(figsize=(14, 8), constrained_layout=True)
         ax1, ax2 = fig_gab.subplots(2, 1)
