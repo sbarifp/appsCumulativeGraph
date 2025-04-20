@@ -8,7 +8,7 @@ import numpy as np
 from io import BytesIO
 from PIL import Image
 
-Image.MAX_IMAGE_PIXELS = None  # Hindari error gambar besar
+Image.MAX_IMAGE_PIXELS = None
 
 st.set_page_config(layout="wide")
 st.title("📊 MACC Curve Generator")
@@ -26,7 +26,7 @@ if uploaded_file:
     df = pd.read_excel(xls, sheet_name=sheet, header=int(header_row) - 1)
 
     st.markdown("---")
-    st.subheader("🧩 Pilih Kolom untuk Komponen Grafik (termasuk Benchmark)")
+    st.subheader("🧩 Pilih Kolom untuk Setiap Komponen")
 
     col1, col2 = st.columns(2)
 
@@ -44,8 +44,10 @@ if uploaded_file:
 
     benchmark_value = None
     if benchmark_col != "(Tidak Ada)":
-        benchmark_value = df[benchmark_col].dropna().values[0]
-        st.success(f"Garis benchmark akan ditampilkan di posisi: {benchmark_value:.2f}")
+        benchmark_series = df[benchmark_col].dropna()
+        if not benchmark_series.empty:
+            benchmark_value = benchmark_series.values[0]
+            st.success(f"Garis benchmark akan ditampilkan di posisi: {benchmark_value:.2f}")
 
     st.markdown("---")
     st.subheader("⚙️ Pengaturan Tambahan")
@@ -133,12 +135,29 @@ if uploaded_file:
                     ha='center', va='bottom', fontsize=6)
 
         if benchmark_value is not None:
-            formatted_label = benchmark_label.replace("CO2e", "CO\u2082e").replace("CO2", "CO\u2082")
+            formatted_label = benchmark_label.replace("CO2e", "CO₂e").replace("CO2", "CO₂")
             ax.axhline(benchmark_value, color='cyan', linestyle='--', linewidth=1)
-            ax.text(x=ax.get_xlim()[0], y=ax.get_ylim()[1],
-                    s=f"${benchmark_value:.0f}{formatted_label}",
-                    color='cyan', fontsize=8, fontweight='bold',
-                    ha='left', va='top')
+
+            ax.text(
+                0.03, 0.98,
+                f"${benchmark_value:.0f}{formatted_label}",
+                transform=ax.transAxes,
+                fontsize=5,
+                color='black',
+                verticalalignment='top',
+                horizontalalignment='left',
+                bbox=dict(facecolor='white', edgecolor='none', pad=0)
+            )
+
+            for i in range(4):
+                ax.text(
+                    0.01 + i * 0.005, 0.973,
+                    "-",
+                    transform=ax.transAxes,
+                    fontsize=8,
+                    color='cyan',
+                    ha='center', va='center'
+                )
 
         for spine in ax.spines.values():
             spine.set_visible(False)
@@ -174,8 +193,7 @@ if uploaded_file:
                         suppress_output=True)
         st.session_state['fig'] = fig
 
-        # Tambahkan jarak sebelum hasil grafik
-        st.markdown("<br><br>", unsafe_allow_html=True)
+    st.markdown("<br><br>", unsafe_allow_html=True)
 
     if 'fig' in st.session_state:
         st.subheader("📈 Grafik MACC Curve (Satu Halaman)")
