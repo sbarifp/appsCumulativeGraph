@@ -24,7 +24,7 @@ if uploaded_file:
     df = pd.read_excel(xls, sheet_name=sheet, header=int(header_row) - 1)
 
     st.markdown("---")
-    st.subheader("🧩 Pilih Kolom untuk Setiap Komponen")
+    st.subheader("🧩 Pilih Kolom untuk Setiap Komponen (termasuk Benchmark)")
 
     col1, col2 = st.columns(2)
 
@@ -33,8 +33,8 @@ if uploaded_file:
         col_x = st.selectbox("Kolom Sumbu X", df.columns)
 
         bcol1, bcol2 = st.columns([1, 2])
-        benchmark_col = bcol1.selectbox("Kolom Benchmark (opsional)", ["(Tidak Ada)"] + list(df.columns))
-        benchmark_label = bcol2.text_input("Label Benchmark", value="USD/tCO2e")
+        benchmark_col = bcol1.selectbox("Benchmark", ["(Tidak Ada)"] + list(df.columns))
+        benchmark_label = bcol2.text_input("Label", value="/tCO2e Benchmark")
 
     with col2:
         col_middle = st.selectbox("Kolom Nilai Tengah Batang", df.columns)
@@ -42,15 +42,11 @@ if uploaded_file:
 
     benchmark_value = None
     if benchmark_col != "(Tidak Ada)":
-        benchmark_series = df[benchmark_col].dropna()
-        if not benchmark_series.empty:
-            benchmark_value = benchmark_series.values[0]
-            st.success(f"Garis benchmark akan ditampilkan di posisi: {benchmark_value:.2f}")
-        else:
-            st.warning("Kolom benchmark tidak memiliki nilai valid.")
+        benchmark_value = df[benchmark_col].dropna().values[0]
+        st.success(f"Garis benchmark akan ditampilkan di posisi: {benchmark_value:.2f}")
 
     st.markdown("---")
-    st.subheader("⚙️ Pengaturan Tambahan")
+    st.subheader("⚙️ Parameter Tambahan")
     mac_min = st.number_input("Batas bawah", value=-2500)
     mac_max = st.number_input("Batas atas", value=3000)
     x_label = st.text_input("Label Sumbu X", value="Avoided Emission (tCO2e per Tahun)")
@@ -128,30 +124,15 @@ if uploaded_file:
 
                 ax.text(mid_x, 0, f"{row['Nilai_Xaxis']:,.0f}".replace(",", "."), ha='center', va='bottom', fontsize=5)
 
-            # Custom benchmark line and label
             if benchmark_value is not None:
+                formatted_label = benchmark_label.replace("CO2e", "CO\u2082e").replace("CO2", "CO\u2082")
                 ax.axhline(benchmark_value, color='cyan', linestyle='--', linewidth=1)
-
-                label_text = f"${benchmark_value:.0f}/tCO\u2082e Benchmark"
                 ax.text(
-                    0.03, 0.98,
-                    label_text,
-                    transform=ax.transAxes,
-                    fontsize=5,
-                    color='black',
-                    verticalalignment='top',
-                    horizontalalignment='left',
-                    bbox=dict(facecolor='white', edgecolor='none', pad=0)
+                    x=ax.get_xlim()[0], y=y_max,
+                    s=f"${benchmark_value:.0f}{formatted_label}",
+                    color='cyan', fontsize=8, fontweight='bold',
+                    ha='left', va='top'
                 )
-
-                for i in range(4):
-                    ax.text(
-                        0.01 + i * 0.005, 0.973,  # dari kiri ke kanan
-                        "-", transform=ax.transAxes,
-                        fontsize=8,
-                        color='cyan',
-                        ha='center', va='center'
-                    )
 
             for spine in ax.spines.values():
                 spine.set_visible(False)
@@ -199,6 +180,7 @@ if uploaded_file:
                                                  x_label=x_label, y_label=y_label,
                                                  suppress_output=True, benchmark_value=benchmark_value, benchmark_label=benchmark_label)
 
+    # ⬇️ Tambahkan jarak antar section
     st.markdown("<br><br>", unsafe_allow_html=True)
 
     st.subheader("🖼️ Grafik Gabungan (1 Halaman)")

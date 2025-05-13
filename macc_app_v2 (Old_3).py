@@ -5,8 +5,10 @@ import matplotlib.ticker as ticker
 from matplotlib import cm
 import numpy as np
 from io import BytesIO
+import matplotlib.colors as mcolors
 import warnings
 
+# Suppress warning openpyxl
 warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
 
 st.set_page_config(layout="wide")
@@ -25,32 +27,13 @@ if uploaded_file:
 
     st.markdown("---")
     st.subheader("🧩 Pilih Kolom untuk Setiap Komponen")
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        col_project = st.selectbox("Kolom Nama Proyek", df.columns)
-        col_x = st.selectbox("Kolom Sumbu X", df.columns)
-
-        bcol1, bcol2 = st.columns([1, 2])
-        benchmark_col = bcol1.selectbox("Kolom Benchmark (opsional)", ["(Tidak Ada)"] + list(df.columns))
-        benchmark_label = bcol2.text_input("Label Benchmark", value="USD/tCO2e")
-
-    with col2:
-        col_middle = st.selectbox("Kolom Nilai Tengah Batang", df.columns)
-        col_top = st.selectbox("Kolom Nilai Ujung Batang", df.columns)
-
-    benchmark_value = None
-    if benchmark_col != "(Tidak Ada)":
-        benchmark_series = df[benchmark_col].dropna()
-        if not benchmark_series.empty:
-            benchmark_value = benchmark_series.values[0]
-            st.success(f"Garis benchmark akan ditampilkan di posisi: {benchmark_value:.2f}")
-        else:
-            st.warning("Kolom benchmark tidak memiliki nilai valid.")
+    col_project = st.selectbox("Kolom Nama Proyek", df.columns)
+    col_x = st.selectbox("Kolom Sumbu X", df.columns)
+    col_middle = st.selectbox("Kolom Nilai Tengah Batang", df.columns)
+    col_top = st.selectbox("Kolom Nilai Ujung Batang", df.columns)
 
     st.markdown("---")
-    st.subheader("⚙️ Pengaturan Tambahan")
+    st.subheader("⚙️ Parameter Tambahan")
     mac_min = st.number_input("Batas bawah", value=-2500)
     mac_max = st.number_input("Batas atas", value=3000)
     x_label = st.text_input("Label Sumbu X", value="Avoided Emission (tCO2e per Tahun)")
@@ -58,6 +41,7 @@ if uploaded_file:
 
     df_clean = df[[col_project, col_x, col_middle, col_top]].dropna()
     df_clean.columns = ['Project', 'Nilai_Xaxis', 'Nilai_Tengah', 'Nilai_Ujung']
+
     df_clean['Nilai_Xaxis'] = pd.to_numeric(df_clean['Nilai_Xaxis'], errors='coerce')
     df_clean['Nilai_Tengah'] = pd.to_numeric(df_clean['Nilai_Tengah'], errors='coerce')
     df_clean['Nilai_Ujung'] = pd.to_numeric(df_clean['Nilai_Ujung'], errors='coerce')
@@ -66,13 +50,13 @@ if uploaded_file:
 
     unique_projects = df_clean['Project'].unique()
 
-    st.markdown("---")
+    # 🎨 Pilih dan preview skema warna
     st.subheader("🎨 Pilih Skema Warna Batang")
     colormaps_available = ['PuBuGn', 'cool', 'Blues', 'plasma', 'viridis', 'cividis']
     selected_colormap = st.selectbox("Pilih Skema Warna", colormaps_available)
 
     def preview_colormap(cmap_name, n=10):
-        gradient = np.linspace(0.1, 0.9, n).reshape(1, n)
+        gradient = np.linspace(0.1, 0.9, n).reshape(1, n)  # Skip warna ekstrem
         fig, ax = plt.subplots(figsize=(5, 0.4))
         cmap = cm.get_cmap(cmap_name)
         ax.imshow(gradient, aspect='auto', cmap=cmap)
@@ -82,16 +66,14 @@ if uploaded_file:
     st.markdown("🔍 Pratinjau Skema Warna Terpilih:")
     preview_colormap(selected_colormap, n=len(unique_projects))
 
+    # Ambil warna dengan skip warna pucat
     cmap_base = cm.get_cmap(selected_colormap)
     color_vals = np.linspace(0.1, 0.9, len(unique_projects))
     project_to_color = {proj: cmap_base(val) for proj, val in zip(unique_projects, color_vals)}
 
     if st.button("Buat Grafik") or 'fig1' not in st.session_state:
 
-        def plot_macc(df_subset, title, y_min, y_max, use_clipped=False, ax=None,
-                      x_label="", y_label="", suppress_output=False,
-                      benchmark_value=None, benchmark_label=""):
-
+        def plot_macc(df_subset, title, y_min, y_max, use_clipped=False, ax=None, x_label="", y_label="", suppress_output=False):
             df_subset = df_subset.reset_index(drop=True)
             x_start = [0]
             for val in df_subset['Nilai_Xaxis'].tolist()[:-1]:
@@ -114,6 +96,7 @@ if uploaded_file:
 
                 ax.bar(x=start, height=height, width=width, align='edge', bottom=0, color=color, label=row['Project'])
 
+                # Menghitung offset secara dinamis (5% dari tinggi batang atau minimal 1)
                 offset = 0.05 * abs(height) if abs(height) > 1 else 1
                 pos_text = height + offset if height >= 0 else height - offset
 
@@ -127,31 +110,6 @@ if uploaded_file:
                             fontsize=5, color='white' if abs(height) > 500 else 'black')
 
                 ax.text(mid_x, 0, f"{row['Nilai_Xaxis']:,.0f}".replace(",", "."), ha='center', va='bottom', fontsize=5)
-
-            # Custom benchmark line and label
-            if benchmark_value is not None:
-                ax.axhline(benchmark_value, color='cyan', linestyle='--', linewidth=1)
-
-                label_text = f"${benchmark_value:.0f}/tCO\u2082e Benchmark"
-                ax.text(
-                    0.03, 0.98,
-                    label_text,
-                    transform=ax.transAxes,
-                    fontsize=5,
-                    color='black',
-                    verticalalignment='top',
-                    horizontalalignment='left',
-                    bbox=dict(facecolor='white', edgecolor='none', pad=0)
-                )
-
-                for i in range(4):
-                    ax.text(
-                        0.01 + i * 0.005, 0.973,  # dari kiri ke kanan
-                        "-", transform=ax.transAxes,
-                        fontsize=8,
-                        color='cyan',
-                        ha='center', va='center'
-                    )
 
             for spine in ax.spines.values():
                 spine.set_visible(False)
@@ -180,26 +138,14 @@ if uploaded_file:
 
         fig_gab = plt.figure(figsize=(14, 8), constrained_layout=True)
         ax1, ax2 = fig_gab.subplots(2, 1)
-        plot_macc(df_clean, "MACC Curve - Bagian 1 (Gabungan)", mac_min, mac_max,
-                  use_clipped=True, ax=ax1, x_label=x_label, y_label=y_label,
-                  suppress_output=True, benchmark_value=benchmark_value, benchmark_label=benchmark_label)
+        plot_macc(df_clean, "MACC Curve - Bagian 1 (Gabungan)", mac_min, mac_max, use_clipped=True, ax=ax1, x_label=x_label, y_label=y_label, suppress_output=True)
         if not df_extreme.empty:
-            plot_macc(df_extreme, "MACC Curve - Bagian 2 (Gabungan)", ymin, ymax,
-                      use_clipped=False, ax=ax2, x_label=x_label, y_label=y_label,
-                      suppress_output=True, benchmark_value=benchmark_value, benchmark_label=benchmark_label)
+            plot_macc(df_extreme, "MACC Curve - Bagian 2 (Gabungan)", ymin, ymax, use_clipped=False, ax=ax2, x_label=x_label, y_label=y_label, suppress_output=True)
 
         st.session_state['fig_gabungan'] = fig_gab
-        st.session_state['fig1'] = plot_macc(df_clean, "MACC Curve - Bagian 1",
-                                             mac_min, mac_max, use_clipped=True,
-                                             x_label=x_label, y_label=y_label,
-                                             suppress_output=True, benchmark_value=benchmark_value, benchmark_label=benchmark_label)
+        st.session_state['fig1'] = plot_macc(df_clean, "MACC Curve - Bagian 1", mac_min, mac_max, use_clipped=True, x_label=x_label, y_label=y_label, suppress_output=True)
         if not df_extreme.empty:
-            st.session_state['fig2'] = plot_macc(df_extreme, "MACC Curve - Bagian 2",
-                                                 ymin, ymax, use_clipped=False,
-                                                 x_label=x_label, y_label=y_label,
-                                                 suppress_output=True, benchmark_value=benchmark_value, benchmark_label=benchmark_label)
-
-    st.markdown("<br><br>", unsafe_allow_html=True)
+            st.session_state['fig2'] = plot_macc(df_extreme, "MACC Curve - Bagian 2", ymin, ymax, use_clipped=False, x_label=x_label, y_label=y_label, suppress_output=True)
 
     st.subheader("🖼️ Grafik Gabungan (1 Halaman)")
     if 'fig_gabungan' in st.session_state:
@@ -211,7 +157,6 @@ if uploaded_file:
         buffer_pdf = BytesIO()
         st.session_state['fig_gabungan'].savefig(buffer_pdf, format="pdf", bbox_inches="tight")
         st.download_button("⬇️ Download PDF Gabungan", buffer_pdf.getvalue(), file_name="MACC_Gabungan.pdf", mime="application/pdf")
-        st.markdown("<br>", unsafe_allow_html=True)
 
     st.subheader("📈 Grafik MACC Bagian 1 (Terpisah)")
     if 'fig1' in st.session_state:
@@ -224,7 +169,6 @@ if uploaded_file:
         buf1_pdf = BytesIO()
         fig1.savefig(buf1_pdf, format="pdf", bbox_inches="tight")
         st.download_button("⬇️ Download PDF Bagian 1", buf1_pdf.getvalue(), file_name="MACC_Bagian_1.pdf", mime="application/pdf")
-        st.markdown("<br>", unsafe_allow_html=True)
 
     st.subheader("📈 Grafik MACC Bagian 2 (Terpisah)")
     if 'fig2' in st.session_state:
