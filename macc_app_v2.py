@@ -34,7 +34,7 @@ if uploaded_file:
 
         bcol1, bcol2 = st.columns([1, 2])
         benchmark_col = bcol1.selectbox("Kolom Benchmark (opsional)", ["(Tidak Ada)"] + list(df.columns))
-        benchmark_label = bcol2.text_input("Label Benchmark", value="USD/tCO2e")
+        benchmark_label = bcol2.text_input("Label Benchmark", value=" USD/tCO2e")
 
     with col2:
         col_middle = st.selectbox("Kolom Nilai Tengah Batang", df.columns)
