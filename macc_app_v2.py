@@ -34,7 +34,7 @@ if uploaded_file:
 
         bcol1, bcol2 = st.columns([1, 2])
         benchmark_col = bcol1.selectbox("Kolom Benchmark (opsional)", ["(Tidak Ada)"] + list(df.columns))
-        benchmark_label = bcol2.text_input("Label Benchmark", value=" USD/tCO2e")
+        benchmark_label = bcol2.text_input("Label Benchmark", value="USD/tCO2e")
 
     with col2:
         col_middle = st.selectbox("Kolom Nilai Tengah Batang", df.columns)
@@ -130,9 +130,10 @@ if uploaded_file:
 
             # Custom benchmark line and label
             if benchmark_value is not None:
+                formatted_label = benchmark_label.replace("CO2e", "CO₂e").replace("CO2", "CO₂")
                 ax.axhline(benchmark_value, color='cyan', linestyle='--', linewidth=1)
 
-                label_text = f"${benchmark_value:.0f}/tCO\u2082e Benchmark"
+                label_text = f"${benchmark_value:.0f} {formatted_label}"
                 ax.text(
                     0.03, 0.98,
                     label_text,
